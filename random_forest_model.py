@@ -40,11 +40,11 @@ for col in numeric_cols:
 
 text_cols = df.select_dtypes(include=['object']).columns
 df[text_cols] = df[text_cols].apply(lambda x: x.str.strip())
-print("Rows:", len(df))
-print("Numeric columns:", numeric_cols)
-print("Missing values per column:\n", df.isna().sum())
-print(df.iloc[:,:8].sample(5))
-print(df.dtypes)
+# print("Rows:", len(df))
+#print("Numeric columns:", numeric_cols)
+# print("Missing values per column:\n", df.isna().sum())
+# print(df.iloc[:,:8].sample(5))
+# print(df.dtypes)
 
 #Method 1:  Median price and average price per sf
 numeric_cols = ['sale_price', 'size','age','typical_floor_sf','parking_ratio','number_of_tenants']
@@ -80,10 +80,7 @@ estimated_price_similar_median = similar_properties['price_per_sf'].median()* ne
 print(f"Estimated Price - similar sizes (Mean): ${estimated_price_similar_mean:,.0f}")
 print(f"Estimated Price - similar sizes (Median): ${estimated_price_similar_median:,.0f}")
 
-
-# Method 3: Linear Regression Model
-#encode categorical variables using one-hot encoding
-
+# Method 3: Random Forest Model
 catetorical_cols = ['building_class']
 df = df[df['property_type'].isin(['Retail'])] ## Keep only rows where property_type is Office or Retail
 df = df.reset_index(drop=True)
@@ -114,33 +111,20 @@ x = pd.get_dummies(x, columns=catetorical_cols, drop_first=True)
 dummy_building = pd.get_dummies(df['building_class'], drop_first=True)
 print(dummy_building.columns.tolist())
 
-model = LinearRegression()
-model.fit(x,y_lr)
-print(f"Intercept: {model.intercept_:.2f}")
-for feature, coef in zip(x.columns, model.coef_):  #a list of numbers the linear regression model learned for each feature.
-    print(f"{feature} coef: {coef:.0f}")
-    
+
 # Predict price for a new listing
 new_property_features = pd.DataFrame(0.0, index=[0], columns=x.columns) #only one row, index 0, all columns from x, initialized to 0.0 (floart type)
 new_property_features.loc[0, ['size', 'age', 'typical_floor_sf', 'parking_ratio', 'number_of_tenants']] = [
-    new_listing_size, 50, 1500, 0.5, 0
-]
-
-# Fill categorical dummies if needed
-# Example: building_class_B = 1 if the new listing is class B
-# Example: property_type_Retail = 1 if property type is Retail
-# Fill categorical dummies safely
+    new_listing_size, 50, 1500, 0.5, 0]  # Set numeric features for the new property
+# Fill categorical dummies if needed # Example: building_class_B = 1 if the new listing is class B, Example: property_type_Retail = 1 if property type is Retail
 if 'building_class_B' in new_property_features.columns:
     new_property_features.at[0, 'building_class_B'] = 0
 if 'building_class_C' in new_property_features.columns:
     new_property_features.at[0, 'building_class_C'] = 1
 
-predicted_price_lr = model.predict(new_property_features)[0]  # only one new listing, so we take the first element
-print(f"***\n Estimated Price-Linear Regression: ${predicted_price_lr:,.0f}")
-
 # random forest model  - learning from many real examples instead of forcing a straight-line formula.
 
-y_rf = df['sale_price']  #target variable is price per sf
+y_rf = df['sale_price']  #target variable is sale price
 rf_model = RandomForestRegressor(n_estimators=300, random_state=42, min_samples_leaf=5)
 
 #  ask 300 individual trees to make decisions; Each final decision (leaf) must be based on at least 5 properties, random
@@ -172,5 +156,5 @@ r2 = r2_score(y_test, y_pred)
 
 mse = mean_squared_error(y_test, y_pred)
 rmse = np.sqrt(mse) 
-print(f"RMSE: ${rmse:,.0f}")
+#print(f"RMSE: ${rmse:,.0f}")
 print(f"R²: {r2:.2f}")

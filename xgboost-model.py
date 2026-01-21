@@ -6,6 +6,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import numpy as np
+import matplotlib.pyplot as plt
+import xgboost as xgb
+
 # Clean data in Python
 def normalize_columns(df):
     df.columns = (
@@ -43,7 +46,7 @@ df[text_cols] = df[text_cols].apply(lambda x: x.str.strip())
 print("Rows:", len(df))
 print("Numeric columns:", numeric_cols)
 print("Missing values per column:\n", df.isna().sum())
-print(df.iloc[:,:8].sample(5))
+#print(df.iloc[:,:8].sample(5))
 print(df.dtypes)
 
 #Method 1:  Median price and average price per sf
@@ -89,16 +92,13 @@ df = df[df['property_type'].isin(['Retail'])] ## Keep only rows where property_t
 df = df.reset_index(drop=True)
 #print (df.iloc[:,:8])  #print first 8 columns
 numeric_cols = ['size','age','number_of_tenants','typical_floor_sf','parking_ratio']
+
 x= df.drop(columns=['sale_price','property_address','sale_date','submarket_name','market',
     'zoning','agemissing','sizemissing','typical_floor_sfmissing','parking_ratiomissing',
     'number_of_tenantsmissing','sale_pricemissing','agemissing','price_per_sf_netmissing',
     'price_per_sf_net','property_type','price_per_sf'])
 print(f"Factors considered in models:", x.columns.tolist())
-y_lr = df['sale_price']  #target variable is sale price
 
-# Fill numeric columns that has NaN values with median value
-# num_imputer = SimpleImputer(strategy='median')
-# x[numeric_cols] = pd.DataFrame(num_imputer.fit_transform(x[numeric_cols]), columns=numeric_cols, index=x.index)
 
 # Clean categorical columns
 x[catetorical_cols] = x[catetorical_cols].apply(lambda col: col.astype(str).str.strip())
@@ -114,63 +114,42 @@ x = pd.get_dummies(x, columns=catetorical_cols, drop_first=True)
 dummy_building = pd.get_dummies(df['building_class'], drop_first=True)
 print(dummy_building.columns.tolist())
 
-model = LinearRegression()
-model.fit(x,y_lr)
-print(f"Intercept: {model.intercept_:.2f}")
-for feature, coef in zip(x.columns, model.coef_):  #a list of numbers the linear regression model learned for each feature.
-    print(f"{feature} coef: {coef:.0f}")
+
+y = df['sale_price']  #target variable is price per sf
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42) #use 20% for testing
+
+
+model = xgb.XGBRegressor(
+    n_estimators=300,       # number of trees in the forest
+    learning_rate=0.05,     # how fast the model learns
+    max_depth=5,            # max depth of each tree
+    min_child_weight=3,     # minimum sum of instance weight needed in a child
+    subsample=0.8,          # fraction of data used per tree
+    colsample_bytree=0.8,   # fraction of features used per tree
+    random_state=42
+)
+model.fit(x_train, y_train)
+y_pred = model.predict(x_test)
+mae = mean_absolute_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+print(f"MAE: ${mae:,.0f}")
+print(f"R²: {r2:.2f}")
+
+xgb.plot_importance(model, max_num_features=10)
+plt.show()
     
 # Predict price for a new listing
 new_property_features = pd.DataFrame(0.0, index=[0], columns=x.columns) #only one row, index 0, all columns from x, initialized to 0.0 (floart type)
 new_property_features.loc[0, ['size', 'age', 'typical_floor_sf', 'parking_ratio', 'number_of_tenants']] = [
     new_listing_size, 50, 1500, 0.5, 0
 ]
-
-# Fill categorical dummies if needed
-# Example: building_class_B = 1 if the new listing is class B
-# Example: property_type_Retail = 1 if property type is Retail
-# Fill categorical dummies safely
+# Fill categorical dummies if needed# Example: building_class_B = 1 if the new listing is class B# Example: property_type_Retail = 1 if property type is Retail# Fill categorical dummies safely
 if 'building_class_B' in new_property_features.columns:
     new_property_features.at[0, 'building_class_B'] = 0
 if 'building_class_C' in new_property_features.columns:
     new_property_features.at[0, 'building_class_C'] = 1
 
-predicted_price_lr = model.predict(new_property_features)[0]  # only one new listing, so we take the first element
-print(f"***\n Estimated Price-Linear Regression: ${predicted_price_lr:,.0f}")
 
-# random forest model  - learning from many real examples instead of forcing a straight-line formula.
+predicted_price = model.predict(new_property_features)[0]  # only one new listing, so we take the first element
+print(f"***\n Estimated Price-XGBoost: ${predicted_price:,.0f}")
 
-y_rf = df['sale_price']  #target variable is price per sf
-rf_model = RandomForestRegressor(n_estimators=300, random_state=42, min_samples_leaf=5)
-
-#  ask 300 individual trees to make decisions; Each final decision (leaf) must be based on at least 5 properties, random
-rf_model.fit(x, y_rf)
-predicted_price_rf = rf_model.predict(new_property_features)[0]
-
-#pred_price_per_sf = rf_model.predict(new_property_features)[0]
-#predicted_price_rf = pred_price_per_sf * new_property_features.at[0, 'size']
-
-print(f"Estimated Price-Random Forest: ${predicted_price_rf:,.0f}")
-feature_importance = pd.Series(
-    rf_model.feature_importances_,
-    index=x.columns
-).sort_values(ascending=False)
-
-print(feature_importance.head(10))
-
-# SSplit/test
-x_train, x_test, y_train, y_test = train_test_split(x, y_rf, test_size=0.2, random_state=42) #use 20% for testing
-rf_model.fit(x_train, y_train)
-
-y_pred = rf_model.predict(x_test)
-print("Predicted vs Actual Prices:")
-for actual, predicted in zip(y_test.head(10), y_pred[:10]):
-    print(f"Actual: ${actual:,.0f}, Predicted: ${predicted:,.0f}")
-mae = mean_absolute_error(y_test, y_pred)
-print(f"MAE: ${mae:,.0f}")
-r2 = r2_score(y_test, y_pred)
-
-mse = mean_squared_error(y_test, y_pred)
-rmse = np.sqrt(mse) 
-print(f"RMSE: ${rmse:,.0f}")
-print(f"R²: {r2:.2f}")

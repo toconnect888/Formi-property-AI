@@ -27,8 +27,8 @@ print("Excel data imported successfully!")
 conn.close()
 
 # Step 1: Activate your virtual environment (optional but recommended)
-python3 -m venv venv      # create virtual environment named 'venv'
-source venv/bin/activate  # activate it
+python -m venv formi_venv      # create virtual environment named 'venv'
+formi_venv\Scripts\Activate.ps1  # activate it
 
 # install dependables: 
 pip install -r requirements.txt
